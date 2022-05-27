@@ -1,5 +1,5 @@
 #include <QTRSensors.h>
-
+#include <Arduino_APDS9960.h>
 QTRSensors qtr;
 
 const uint8_t SensorCount = 8;
@@ -8,16 +8,17 @@ uint16_t sensorValues[SensorCount];
 //PID
 int lastError = 0;
 
-float M1 = 150;
-float M2 = 150;
+const float M1 = 255;  //RIGHT WHEEL
+const float M2 = 235;  //LEFT WHEEL  +-5
+float M2toM1Ratio = M2/M1;
 float currentTime=0;
 float elapsedTime=0;
 float previousTime=0;
 float cumError=0;
 float rateError=0;
-float KP=1;
-float KI=0;
-float KD=0;
+float KP=6.0/310;
+float KI=1.0/1000000000;
+float KD=1;
 
 //motor control
 int motorPinIn1 = 6;
@@ -89,6 +90,18 @@ void calibrateQtr(){
 
 void setup()
 {
+//////////////////////////////////////////////////////////////
+while (!Serial); // Wait for Serial Monitor to open
+if (!APDS.begin()) {
+Serial.println("Error initializing APDS-9960 sensor.");
+while (true); // Stop forever
+}
+
+int proximity = 0;
+int r = 0, g = 0, b = 0;
+unsigned long lastUpdate = 0;
+
+///////////////////////////////////////////////////////////////
   Serial.begin(9600);
   motorSetup();
   qtrSetup();
@@ -114,16 +127,10 @@ void loop()
   // position
   
     
-  for (uint8_t i = 0; i < SensorCount; i++)
-  {
-    Serial.print(sensorValues[i]);
-    Serial.print('\t');
-  }
-  Serial.println(position);
-  
   //time
    currentTime = millis();
    elapsedTime = currentTime - previousTime;
+   previousTime = currentTime;
   
 
   //PID
@@ -131,20 +138,50 @@ void loop()
 
   cumError += error * elapsedTime;
   rateError = (error - lastError)/elapsedTime;
-  int motorSpeed = KP * error + KI * cumError + KD * rateError;
+  float scaledError = rateError * rateError * rateError;
+  scaledError = clamp(scaledError, -200, 200);
+  float motorSpeed = KP * error + KI * cumError + KD * scaledError;
   lastError = error;
 
   //motors
-  int m1Speed = M1 + motorSpeed;
-  int m2Speed = M2 - motorSpeed;
+  float m1Speed = M1;
+  float m2Speed = M2;
+  if(motorSpeed > 0){
+    m1Speed = M1 - motorSpeed;
+  } else {
+    m2Speed = M2 + motorSpeed;
+  }
   
   m1Speed = clamp(m1Speed, 0, 255);
   m2Speed = clamp(m2Speed, 0, 255);
 
   analogWrite(motorPinENA, m1Speed);
   analogWrite(motorPinENB, m2Speed);
+
+  for (uint8_t i = 0; i < SensorCount; i++)
+  {
+    Serial.print(sensorValues[i]);
+    Serial.print('\t');
+  }
+  Serial.print(position);
+  Serial.print("\t speed=");
+  Serial.print(motorSpeed);
+  Serial.print("\t m1=");
+  Serial.print(m1Speed);
+  Serial.print("\t m2=");
+  Serial.print(m2Speed);
+  Serial.print("\t Kp*p=");
+  Serial.print(KP * error);
+  Serial.print("\t Ki*I=");
+  Serial.print(KI * cumError);
+  Serial.print("\t Kd*D=");
+  Serial.println(KD * scaledError);
 }
 
 float clamp(float value, float min, float max){
   return value > max ? max : (value < min ? min : value);  
+}
+
+int sign(float value) {
+  return value < 0 ? -1 : 1;
 }
