@@ -28,6 +28,10 @@ int motorPinIn3 = 3;
 int motorPinIn4 = 4;
 int motorPinENB = 10;
 
+//APDS
+int proximity = 0;
+int r = 0,g = 0,b = 0;
+int stopDistance = 100;
 
 void qtrSetup(){
   // configure the sensors
@@ -50,7 +54,6 @@ void motorSetup(){
   digitalWrite(motorPinIn2, LOW);
   digitalWrite(motorPinIn3, HIGH);
   digitalWrite(motorPinIn4, LOW);
-  
 }
 
 void calibrateQtr(){
@@ -90,18 +93,13 @@ void calibrateQtr(){
 
 void setup()
 {
-//////////////////////////////////////////////////////////////
-while (!Serial); // Wait for Serial Monitor to open
-if (!APDS.begin()) {
-Serial.println("Error initializing APDS-9960 sensor.");
-while (true); // Stop forever
-}
 
-int proximity = 0;
-int r = 0, g = 0, b = 0;
-unsigned long lastUpdate = 0;
+    while (!Serial); // Wait for Serial Monitor to open
+    if (!APDS.begin()) {
+        Serial.println("Error initializing APDS-9960 sensor.");
+        while (true); // Stop forever
+    }
 
-///////////////////////////////////////////////////////////////
   Serial.begin(9600);
   motorSetup();
   qtrSetup();
@@ -113,20 +111,35 @@ unsigned long lastUpdate = 0;
 
 void loop()
 {
+    if(APDS.proximityAvailable()){
+        proximity = APDS.readProximity();
+        float distance = proximity/255.0*100.0;
+
+        if(distance <= stopDistance){
+            analogWrite(motorPinENA, 0);
+            analogWrite(motorPinENB, 0);
+
+            if(APDS.colorAvailable()){
+                APDS.readColor(r, g, b);
+                //display
+            }
+
+            return;
+        }
+        return;
+        Serial.println("proximity");
+    }
+
   digitalWrite(motorPinIn1, HIGH);
   digitalWrite(motorPinIn2, LOW);
   digitalWrite(motorPinIn3, HIGH);
   digitalWrite(motorPinIn4, LOW);
   
   // read calibrated sensor values and obtain a measure of the line position
-  // from 0 to 5000 (for a white line, use readLineWhite() instead)
+  // from 0 to 7000 (for a white line, use readLineWhite() instead)
   uint16_t position = qtr.readLineBlack(sensorValues);
 
-  // print the sensor values as numbers from 0 to 1000, where 0 means maximum
-  // reflectance and 1000 means minimum reflectance, followed by the line
-  // position
-  
-    
+   
   //time
    currentTime = millis();
    elapsedTime = currentTime - previousTime;
@@ -158,6 +171,9 @@ void loop()
   analogWrite(motorPinENA, m1Speed);
   analogWrite(motorPinENB, m2Speed);
 
+  // print the sensor values as numbers from 0 to 1000, where 0 means maximum
+  // reflectance and 1000 means minimum reflectance, followed by the line
+  // position
   for (uint8_t i = 0; i < SensorCount; i++)
   {
     Serial.print(sensorValues[i]);
